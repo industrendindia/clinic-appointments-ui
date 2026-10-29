@@ -697,8 +697,8 @@ function Partners({ token, owner }: { token: string; owner: boolean }) {
         {
           method: "POST",
           body: JSON.stringify({
-            username: field(f, "username"),
-            password: field(f, "password"),
+            username: field(f, "username") || null,
+            password: field(f, "password") || null,
             displayName: field(f, "displayName"),
             phone: field(f, "phone"),
             dob: field(f, "dob") || null,
