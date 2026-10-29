@@ -1412,6 +1412,92 @@ function Services({ token, owner }: { token: string; owner: boolean }) {
   );
 }
 
+function RescheduleEditor({
+  appointment,
+  token,
+  onSaved,
+  onError,
+}: {
+  appointment: Row;
+  token: string;
+  onSaved: () => void;
+  onError: (message: string) => void;
+}) {
+  const initialDate = String(appointment.starts_at).slice(0, 10);
+  const [serviceId, setServiceId] = useState(String(appointment.service_id));
+  const [date, setDate] = useState(initialDate);
+  const [slot, setSlot] = useState("");
+  const [services, setServices] = useState<Row[]>([]);
+  const [slots, setSlots] = useState<Row[]>([]);
+
+  useEffect(() => {
+    api<Row[]>(
+      `/practitioners/${appointment.practitioner_id}/services`,
+      {},
+      token,
+    )
+      .then(setServices)
+      .catch((e) => onError(e.message));
+  }, [appointment.practitioner_id, token]);
+
+  useEffect(() => {
+    if (!serviceId || !date) return;
+    setSlot("");
+    api<Row[]>(
+      `/slots?practitionerId=${appointment.practitioner_id}&serviceId=${serviceId}&date=${date}&excludeAppointmentId=${appointment.id}`,
+      {},
+      token,
+    )
+      .then(setSlots)
+      .catch((e) => {
+        setSlots([]);
+        onError(e.message);
+      });
+  }, [appointment.id, appointment.practitioner_id, date, serviceId, token]);
+
+  async function save(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!slot) return onError("Select an available replacement slot");
+    try {
+      await api(
+        `/appointments/${appointment.id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ serviceId, startsAt: slot }),
+        },
+        token,
+      );
+      onSaved();
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  }
+
+  return (
+    <form onSubmit={save}>
+      <select value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
+        {services.map((service) => (
+          <option value={service.id}>{service.name}</option>
+        ))}
+      </select>
+      <input
+        type="date"
+        min={new Date().toISOString().slice(0, 10)}
+        value={date}
+        onChange={(e) => setDate(e.target.value)}
+      />
+      <select value={slot} onChange={(e) => setSlot(e.target.value)} required>
+        <option value="">Select a free slot</option>
+        {slots.map((available) => (
+          <option value={available.startsAt}>{available.label}</option>
+        ))}
+      </select>
+      {!slots.length && <small>No free slots on this date.</small>}
+      <button disabled={!slot}>Save this date</button>
+    </form>
+  );
+}
+
 function Appointments({
   token,
   onCreated,
@@ -1420,8 +1506,7 @@ function Appointments({
   onCreated: () => void;
 }) {
   const customers = useRows("/customers?q=", token),
-    practitioners = useRows("/practitioners", token),
-    allServices = useRows("/services", token);
+    practitioners = useRows("/practitioners", token);
   const date = new Date().toISOString().slice(0, 10);
   const [filterFrom, setFilterFrom] = useState(date),
     [filterTo, setFilterTo] = useState(date);
@@ -1507,29 +1592,6 @@ function Appointments({
       setSelectedSlots([]);
       data.load();
       onCreated();
-    } catch (x) {
-      setError((x as Error).message);
-    }
-  }
-  async function modify(id: string, e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    try {
-      await api(
-        `/appointments/${id}`,
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            serviceId: field(f, "serviceId"),
-            startsAt: field(f, "startsAt"),
-          }),
-        },
-        token,
-      );
-      setOk(
-        "This appointment was updated without changing the rest of its series.",
-      );
-      data.load();
     } catch (x) {
       setError((x as Error).message);
     }
@@ -1790,19 +1852,17 @@ function Appointments({
                 <>
                   <details className="modifyBooking">
                     <summary>Modify</summary>
-                    <form onSubmit={(e) => modify(r.id, e)}>
-                      <select name="serviceId" defaultValue={r.service_id}>
-                        {allServices.rows.map((s) => (
-                          <option value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                      <input
-                        name="startsAt"
-                        type="datetime-local"
-                        defaultValue={String(r.starts_at).slice(0, 16)}
-                      />
-                      <button>Save this date</button>
-                    </form>
+                    <RescheduleEditor
+                      appointment={r}
+                      token={token}
+                      onError={setError}
+                      onSaved={() => {
+                        setOk(
+                          "This appointment was updated without changing the rest of its series.",
+                        );
+                        data.load();
+                      }}
+                    />
                   </details>
                   <button
                     className="linkDanger"
