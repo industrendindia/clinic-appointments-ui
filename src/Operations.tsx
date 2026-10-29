@@ -13,13 +13,14 @@ import {
 import { api, User } from "./main";
 
 type Nav =
-  | "Appointments"
+  | "Manage Appointments"
   | "Customers"
-  | "Partners"
+  | "Practitioners"
   | "Services"
   | "Rooms"
   | "Payments"
   | "Attendance"
+  | "Success Stories"
   | "Settings";
 type Row = Record<string, any>;
 const money = (v: any) =>
@@ -153,14 +154,17 @@ export function OperationsPage({
   if (active === "Rooms")
     return <Rooms token={token} owner={user.role === "OWNER"} />;
   if (active === "Customers") return <Customers token={token} />;
-  if (active === "Partners")
+  if (active === "Practitioners")
     return <Partners token={token} owner={user.role === "OWNER"} />;
   if (active === "Services")
     return <Services token={token} owner={user.role === "OWNER"} />;
-  if (active === "Appointments")
+  if (active === "Manage Appointments")
     return <Appointments token={token} onCreated={onAppointmentCreated} />;
-  if (active === "Payments") return <Payments token={token} />;
+  if (active === "Payments")
+    return <Payments token={token} owner={user.role === "OWNER"} />;
   if (active === "Attendance") return <Attendance token={token} />;
+  if (active === "Success Stories")
+    return <MediaLibrary token={token} owner={user.role === "OWNER"} />;
   return <Settings token={token} />;
 }
 
@@ -363,6 +367,28 @@ function Rooms({ token, owner }: { token: string; owner: boolean }) {
       setError((x as Error).message);
     }
   }
+  async function update(id: string, e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    try {
+      await api(
+        `/rooms/${id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            name: field(f, "name"),
+            roomType: field(f, "roomType"),
+            active: f.get("active") === "on",
+          }),
+        },
+        token,
+      );
+      setOk("Room updated.");
+      data.load();
+    } catch (x) {
+      setError((x as Error).message);
+    }
+  }
   return (
     <Page
       title="Rooms"
@@ -401,6 +427,35 @@ function Rooms({ token, owner }: { token: string; owner: boolean }) {
               <small>{r.room_type}</small>
             </div>
             <em className="statusPill">{r.active ? "Active" : "Inactive"}</em>
+            {owner && (
+              <details className="inlineEditor">
+                <summary>Edit</summary>
+                <form onSubmit={(e) => update(r.id, e)}>
+                  <label>
+                    Name
+                    <input name="name" defaultValue={r.name} required />
+                  </label>
+                  <label>
+                    Type
+                    <select name="roomType" defaultValue={r.room_type}>
+                      <option>THERAPY</option>
+                      <option>ASSESSMENT</option>
+                      <option>COUNSELLING</option>
+                      <option>GENERAL</option>
+                    </select>
+                  </label>
+                  <label className="checkField">
+                    <input
+                      name="active"
+                      type="checkbox"
+                      defaultChecked={r.active}
+                    />
+                    Active
+                  </label>
+                  <button>Save changes</button>
+                </form>
+              </details>
+            )}
           </>
         )}
       />
@@ -438,6 +493,34 @@ function Customers({ token }: { token: string }) {
       );
       form.reset();
       setOk("Customer added.");
+      data.load();
+    } catch (x) {
+      setError((x as Error).message);
+    }
+  }
+  async function update(id: string, e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    try {
+      await api(
+        `/customers/${id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            fullName: field(f, "fullName"),
+            phone: field(f, "phone"),
+            email: field(f, "email") || null,
+            dob: field(f, "dob") || null,
+            address: field(f, "address") || null,
+            guardianName: field(f, "guardianName") || null,
+            guardianPhone: field(f, "guardianPhone") || null,
+            serviceIds: selected(f, "serviceIds"),
+            active: f.get("active") === "on",
+          }),
+        },
+        token,
+      );
+      setOk("Customer updated.");
       data.load();
     } catch (x) {
       setError((x as Error).message);
@@ -514,6 +597,72 @@ function Customers({ token }: { token: string }) {
               </small>
             </div>
             <em>{r.joined_on}</em>
+            <details className="inlineEditor">
+              <summary>Edit</summary>
+              <form onSubmit={(e) => update(r.id, e)}>
+                <label>
+                  Name
+                  <input name="fullName" defaultValue={r.full_name} required />
+                </label>
+                <label>
+                  Phone
+                  <input name="phone" defaultValue={r.phone} required />
+                </label>
+                <label>
+                  Email
+                  <input
+                    name="email"
+                    type="email"
+                    defaultValue={r.email || ""}
+                  />
+                </label>
+                <label>
+                  Date of birth
+                  <input name="dob" type="date" defaultValue={r.dob || ""} />
+                </label>
+                <label>
+                  Address
+                  <input name="address" defaultValue={r.address || ""} />
+                </label>
+                <label>
+                  Guardian
+                  <input
+                    name="guardianName"
+                    defaultValue={r.guardian_name || ""}
+                  />
+                </label>
+                <label>
+                  Guardian phone
+                  <input
+                    name="guardianPhone"
+                    defaultValue={r.guardian_phone || ""}
+                  />
+                </label>
+                <label>
+                  Services
+                  <select
+                    name="serviceIds"
+                    multiple
+                    defaultValue={
+                      Array.isArray(r.service_ids) ? r.service_ids : []
+                    }
+                  >
+                    {services.rows.map((s) => (
+                      <option value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="checkField">
+                  <input
+                    name="active"
+                    type="checkbox"
+                    defaultChecked={r.active}
+                  />
+                  Active
+                </label>
+                <button>Save changes</button>
+              </form>
+            </details>
           </>
         )}
       />
@@ -591,6 +740,46 @@ function Partners({ token, owner }: { token: string; owner: boolean }) {
       );
       form.reset();
       setOk("Receptionist account created.");
+    } catch (x) {
+      setError((x as Error).message);
+    }
+  }
+  async function update(id: string, e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget),
+      photo = f.get("photo") as File,
+      docs = f.get("documents") as File;
+    try {
+      await api(
+        `/practitioners/${id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            displayName: field(f, "displayName"),
+            phone: field(f, "phone"),
+            dob: field(f, "dob") || null,
+            joinedOn: field(f, "joinedOn") || null,
+            engagement: field(f, "engagement"),
+            yearsExperience: Number(field(f, "yearsExperience") || 0),
+            rate: Number(field(f, "rate") || 0),
+            salary: Number(field(f, "salary") || 0),
+            serviceIds: selected(f, "serviceIds"),
+            availability: selected(f, "days").map((day) => ({
+              dayOfWeek: Number(day),
+              startsAt: field(f, "availableFrom"),
+              endsAt: field(f, "availableTo"),
+            })),
+            photoBase64: await fileData(photo),
+            photoContentType: photo?.type || null,
+            documentZipBase64: await fileData(docs),
+            documentZipName: docs?.name || null,
+            active: f.get("active") === "on",
+          }),
+        },
+        token,
+      );
+      setOk("Practitioner profile updated.");
+      data.load();
     } catch (x) {
       setError((x as Error).message);
     }
@@ -753,6 +942,13 @@ function Partners({ token, owner }: { token: string; owner: boolean }) {
         render={(r) => (
           <>
             <div>
+              {r.photo_base64 && (
+                <img
+                  className="profilePhoto"
+                  src={`data:${r.photo_content_type};base64,${r.photo_base64}`}
+                  alt=""
+                />
+              )}
               <b>{r.full_name}</b>
               <small>
                 {r.username || "No portal login"} · {r.engagement} ·{" "}
@@ -760,6 +956,144 @@ function Partners({ token, owner }: { token: string; owner: boolean }) {
               </small>
             </div>
             <em>{r.years_experience} years</em>
+            {owner && (
+              <details className="inlineEditor">
+                <summary>Edit profile</summary>
+                <form onSubmit={(e) => update(r.id, e)}>
+                  <label>
+                    Name
+                    <input
+                      name="displayName"
+                      defaultValue={r.full_name}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Phone
+                    <input name="phone" defaultValue={r.phone || ""} />
+                  </label>
+                  <label>
+                    DOB
+                    <input name="dob" type="date" defaultValue={r.dob || ""} />
+                  </label>
+                  <label>
+                    Joined
+                    <input
+                      name="joinedOn"
+                      type="date"
+                      defaultValue={r.joined_on || ""}
+                    />
+                  </label>
+                  <label>
+                    Engagement
+                    <select name="engagement" defaultValue={r.engagement}>
+                      <option>FULL_TIME</option>
+                      <option>PART_TIME</option>
+                      <option>VISITING</option>
+                    </select>
+                  </label>
+                  <label>
+                    Experience
+                    <input
+                      name="yearsExperience"
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      defaultValue={r.years_experience}
+                    />
+                  </label>
+                  <label>
+                    Rate
+                    <input
+                      name="rate"
+                      type="number"
+                      min="0"
+                      defaultValue={r.rate || 0}
+                    />
+                  </label>
+                  <label>
+                    Salary
+                    <input
+                      name="salary"
+                      type="number"
+                      min="0"
+                      defaultValue={r.salary || 0}
+                    />
+                  </label>
+                  <label>
+                    Services
+                    <select
+                      name="serviceIds"
+                      multiple
+                      defaultValue={
+                        Array.isArray(r.service_ids) ? r.service_ids : []
+                      }
+                    >
+                      {services.rows.map((s) => (
+                        <option value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <fieldset className="availability">
+                    <legend>Available days</legend>
+                    {[
+                      [1, "Mon"],
+                      [2, "Tue"],
+                      [3, "Wed"],
+                      [4, "Thu"],
+                      [5, "Fri"],
+                      [6, "Sat"],
+                      [7, "Sun"],
+                    ].map(([v, n]) => (
+                      <label>
+                        <input
+                          type="checkbox"
+                          name="days"
+                          value={v}
+                          defaultChecked={String(r.availability || "").includes(
+                            `${v}:`,
+                          )}
+                        />
+                        {n}
+                      </label>
+                    ))}
+                  </fieldset>
+                  <label>
+                    From
+                    <input
+                      name="availableFrom"
+                      type="time"
+                      defaultValue="09:30"
+                    />
+                  </label>
+                  <label>
+                    To
+                    <input
+                      name="availableTo"
+                      type="time"
+                      defaultValue="20:00"
+                    />
+                  </label>
+                  <label>
+                    Replace photo
+                    <input name="photo" type="file" accept="image/*" />
+                  </label>
+                  <label>
+                    Replace documents
+                    <input name="documents" type="file" accept=".zip" />
+                  </label>
+                  <label className="checkField">
+                    <input
+                      name="active"
+                      type="checkbox"
+                      defaultChecked={r.active}
+                    />
+                    Active
+                  </label>
+                  <button>Save changes</button>
+                </form>
+              </details>
+            )}
           </>
         )}
       />
@@ -812,6 +1146,32 @@ function Services({ token, owner }: { token: string; owner: boolean }) {
         "_blank",
         "noopener,noreferrer",
       );
+    } catch (x) {
+      setError((x as Error).message);
+    }
+  }
+  async function updateService(id: string, e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    try {
+      await api(
+        `/services/${id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            name: field(f, "name"),
+            category: field(f, "category"),
+            roomType: field(f, "roomType"),
+            minutes: Number(field(f, "minutes")),
+            price: Number(field(f, "price")),
+            discountPercent: Number(field(f, "discountPercent")),
+            active: f.get("active") === "on",
+          }),
+        },
+        token,
+      );
+      setOk("Service updated.");
+      services.load();
     } catch (x) {
       setError((x as Error).message);
     }
@@ -944,6 +1304,67 @@ function Services({ token, owner }: { token: string; owner: boolean }) {
               </small>
             </div>
             <em>{money(r.price)}</em>
+            {owner && (
+              <details className="inlineEditor">
+                <summary>Edit</summary>
+                <form onSubmit={(e) => updateService(r.id, e)}>
+                  <label>
+                    Name
+                    <input name="name" defaultValue={r.name} required />
+                  </label>
+                  <label>
+                    Category
+                    <input name="category" defaultValue={r.category} required />
+                  </label>
+                  <label>
+                    Room type
+                    <select name="roomType" defaultValue={r.room_type}>
+                      <option>THERAPY</option>
+                      <option>ASSESSMENT</option>
+                      <option>COUNSELLING</option>
+                      <option>GENERAL</option>
+                    </select>
+                  </label>
+                  <label>
+                    Minutes
+                    <input
+                      name="minutes"
+                      type="number"
+                      min="15"
+                      defaultValue={r.minutes}
+                    />
+                  </label>
+                  <label>
+                    Price
+                    <input
+                      name="price"
+                      type="number"
+                      step="0.01"
+                      defaultValue={r.price}
+                    />
+                  </label>
+                  <label>
+                    Discount %
+                    <input
+                      name="discountPercent"
+                      type="number"
+                      min="0"
+                      max="100"
+                      defaultValue={r.discount_percent}
+                    />
+                  </label>
+                  <label className="checkField">
+                    <input
+                      name="active"
+                      type="checkbox"
+                      defaultChecked={r.active}
+                    />
+                    Active
+                  </label>
+                  <button>Save changes</button>
+                </form>
+              </details>
+            )}
           </>
         )}
       />
@@ -993,9 +1414,16 @@ function Appointments({
   const customers = useRows("/customers?q=", token),
     practitioners = useRows("/practitioners", token),
     allServices = useRows("/services", token);
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10)),
-    data = useRows(`/appointments?date=${date}`, token),
-    [error, setError] = useState(""),
+  const date = new Date().toISOString().slice(0, 10);
+  const [filterFrom, setFilterFrom] = useState(date),
+    [filterTo, setFilterTo] = useState(date);
+  const [customerFilter, setCustomerFilter] = useState(""),
+    [practitionerFilter, setPractitionerFilter] = useState("");
+  const data = useRows(
+    `/appointments?from=${filterFrom}&to=${filterTo}${customerFilter ? `&customerId=${customerFilter}` : ""}${practitionerFilter ? `&practitionerId=${practitionerFilter}` : ""}`,
+    token,
+  );
+  const [error, setError] = useState(""),
     [ok, setOk] = useState("");
   const [practitionerId, setPractitionerId] = useState(""),
     [serviceId, setServiceId] = useState(""),
@@ -1288,14 +1716,50 @@ function Appointments({
         </div>
       </CreateForm>
       <Notice error={error || data.error} ok={ok} />
-      <label className="dateFilter">
-        Schedule date
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
-      </label>
+      <section className="appointmentFilters">
+        <h3>Manage appointments</h3>
+        <label>
+          From
+          <input
+            type="date"
+            value={filterFrom}
+            onChange={(e) => setFilterFrom(e.target.value)}
+          />
+        </label>
+        <label>
+          To
+          <input
+            type="date"
+            min={filterFrom}
+            value={filterTo}
+            onChange={(e) => setFilterTo(e.target.value)}
+          />
+        </label>
+        <label>
+          Customer
+          <select
+            value={customerFilter}
+            onChange={(e) => setCustomerFilter(e.target.value)}
+          >
+            <option value="">All customers</option>
+            {customers.rows.map((x) => (
+              <option value={x.id}>{x.full_name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Practitioner
+          <select
+            value={practitionerFilter}
+            onChange={(e) => setPractitionerFilter(e.target.value)}
+          >
+            <option value="">All practitioners</option>
+            {practitioners.rows.map((x) => (
+              <option value={x.id}>{x.full_name}</option>
+            ))}
+          </select>
+        </label>
+      </section>
       <CardList
         rows={data.rows}
         empty="No appointments for this date"
@@ -1368,7 +1832,7 @@ function Appointments({
   );
 }
 
-function Payments({ token }: { token: string }) {
+function Payments({ token, owner }: { token: string; owner: boolean }) {
   const customers = useRows("/customers?q=", token),
     data = useRows("/payments", token),
     [error, setError] = useState(""),
@@ -1407,6 +1871,30 @@ function Payments({ token }: { token: string }) {
       form.reset();
       setOk(`Payment recorded. Receipt ${r.receiptNumber}`);
       setDue(null);
+      data.load();
+    } catch (x) {
+      setError((x as Error).message);
+    }
+  }
+  async function update(id: string, e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    try {
+      await api(
+        `/payments/${id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            amount: Number(field(f, "amount")),
+            adjustment: Number(field(f, "adjustment") || 0),
+            method: field(f, "method"),
+            notes: field(f, "notes") || null,
+            reason: field(f, "reason"),
+          }),
+        },
+        token,
+      );
+      setOk("Payment corrected with an audit entry.");
       data.load();
     } catch (x) {
       setError((x as Error).message);
@@ -1494,9 +1982,218 @@ function Payments({ token }: { token: string }) {
               </small>
             </div>
             <em>{money(r.amount)}</em>
+            {owner && (
+              <details className="inlineEditor">
+                <summary>Correct details</summary>
+                <form onSubmit={(e) => update(r.id, e)}>
+                  <label>
+                    Amount
+                    <input
+                      name="amount"
+                      type="number"
+                      step="0.01"
+                      defaultValue={r.amount}
+                    />
+                  </label>
+                  <label>
+                    Adjustment
+                    <input
+                      name="adjustment"
+                      type="number"
+                      step="0.01"
+                      defaultValue={r.adjustment || 0}
+                    />
+                  </label>
+                  <label>
+                    Method
+                    <select name="method" defaultValue={r.method}>
+                      <option>UPI</option>
+                      <option>CARD</option>
+                      <option>CASH</option>
+                      <option>BANK_TRANSFER</option>
+                    </select>
+                  </label>
+                  <label>
+                    Notes
+                    <input name="notes" defaultValue={r.notes || ""} />
+                  </label>
+                  <label>
+                    Correction reason
+                    <input name="reason" required />
+                  </label>
+                  <button>Save audited correction</button>
+                </form>
+              </details>
+            )}
           </>
         )}
       />
+    </Page>
+  );
+}
+
+function MediaLibrary({ token, owner }: { token: string; owner: boolean }) {
+  const data = useRows("/media", token),
+    [error, setError] = useState(""),
+    [ok, setOk] = useState("");
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget,
+      f = new FormData(form),
+      file = f.get("file") as File;
+    if (!file?.size) {
+      setError("Choose a photo or video file.");
+      return;
+    }
+    try {
+      await api(
+        "/media",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            mediaType: field(f, "mediaType"),
+            title: field(f, "title"),
+            caption: field(f, "caption") || null,
+            contentType: file.type,
+            originalName: file.name,
+            contentBase64: await fileData(file),
+            featured: f.get("featured") === "on",
+            active: true,
+          }),
+        },
+        token,
+      );
+      form.reset();
+      setOk("Media uploaded to the clinic library.");
+      data.load();
+    } catch (x) {
+      setError((x as Error).message);
+    }
+  }
+  async function update(id: string, e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    try {
+      await api(
+        `/media/${id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            mediaType: field(f, "mediaType"),
+            title: field(f, "title"),
+            caption: field(f, "caption") || null,
+            featured: f.get("featured") === "on",
+            active: f.get("active") === "on",
+          }),
+        },
+        token,
+      );
+      setOk("Media details updated.");
+      data.load();
+    } catch (x) {
+      setError((x as Error).message);
+    }
+  }
+  return (
+    <Page
+      title="Success stories & social media"
+      subtitle="Upload clinic photos, reels, stories and success-story media from the database."
+      icon={ClipboardCheck}
+    >
+      {owner && (
+        <CreateForm title="Upload media" onSubmit={submit}>
+          <label>
+            Content type
+            <select name="mediaType">
+              <option>SUCCESS_STORY</option>
+              <option>PHOTO</option>
+              <option>REEL</option>
+              <option>STORY</option>
+            </select>
+          </label>
+          <label>
+            Title
+            <input name="title" required />
+          </label>
+          <label>
+            Caption
+            <input name="caption" />
+          </label>
+          <label>
+            Photo or video
+            <input name="file" type="file" accept="image/*,video/*" required />
+          </label>
+          <label className="checkField">
+            <input name="featured" type="checkbox" />
+            Featured story
+          </label>
+        </CreateForm>
+      )}
+      <Notice error={error || data.error} ok={ok} />
+      <div className="mediaGrid">
+        {data.rows.map((r) => (
+          <article className="mediaCard" key={r.id}>
+            {String(r.content_type).startsWith("video/") ? (
+              <video
+                controls
+                src={`data:${r.content_type};base64,${r.content_base64}`}
+              />
+            ) : (
+              <img
+                src={`data:${r.content_type};base64,${r.content_base64}`}
+                alt={r.title}
+              />
+            )}
+            <div>
+              <span>{String(r.media_type).replace("_", " ")}</span>
+              <h3>{r.title}</h3>
+              <p>{r.caption}</p>
+              {r.featured && <b>Featured</b>}
+            </div>
+            {owner && (
+              <details className="inlineEditor">
+                <summary>Edit</summary>
+                <form onSubmit={(e) => update(r.id, e)}>
+                  <label>
+                    Type
+                    <select name="mediaType" defaultValue={r.media_type}>
+                      <option>SUCCESS_STORY</option>
+                      <option>PHOTO</option>
+                      <option>REEL</option>
+                      <option>STORY</option>
+                    </select>
+                  </label>
+                  <label>
+                    Title
+                    <input name="title" defaultValue={r.title} />
+                  </label>
+                  <label>
+                    Caption
+                    <input name="caption" defaultValue={r.caption || ""} />
+                  </label>
+                  <label className="checkField">
+                    <input
+                      name="featured"
+                      type="checkbox"
+                      defaultChecked={r.featured}
+                    />
+                    Featured
+                  </label>
+                  <label className="checkField">
+                    <input
+                      name="active"
+                      type="checkbox"
+                      defaultChecked={r.active}
+                    />
+                    Active
+                  </label>
+                  <button>Save changes</button>
+                </form>
+              </details>
+            )}
+          </article>
+        ))}
+      </div>
     </Page>
   );
 }

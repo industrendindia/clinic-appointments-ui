@@ -23,13 +23,14 @@ import { OperationsPage } from "./Operations";
 
 type Nav =
   | "Dashboard"
-  | "Appointments"
+  | "Manage Appointments"
   | "Customers"
-  | "Partners"
+  | "Practitioners"
   | "Services"
   | "Rooms"
   | "Payments"
   | "Attendance"
+  | "Success Stories"
   | "Settings";
 export type User = {
   id: string;
@@ -74,13 +75,14 @@ type DashboardData = {
 };
 const nav: [Nav, React.ElementType][] = [
   ["Dashboard", LayoutDashboard],
-  ["Appointments", CalendarDays],
+  ["Manage Appointments", CalendarDays],
   ["Customers", UsersRound],
-  ["Partners", Stethoscope],
+  ["Practitioners", Stethoscope],
   ["Services", ClipboardCheck],
   ["Rooms", Menu],
   ["Payments", CreditCard],
   ["Attendance", Clock3],
+  ["Success Stories", ClipboardCheck],
   ["Settings", Settings],
 ];
 
@@ -284,14 +286,15 @@ function ClinicPortal({
               ([n]) =>
                 user.role === "OWNER" ||
                 (user.role === "RECEPTIONIST"
-                  ? n !== "Partners"
+                  ? n !== "Practitioners"
                   : ![
-                      "Appointments",
+                      "Manage Appointments",
                       "Customers",
                       "Payments",
                       "Attendance",
                       "Settings",
-                      "Partners",
+                      "Practitioners",
+                      "Success Stories",
                     ].includes(n)),
             )
             .map(([n, I]) => (
@@ -344,7 +347,7 @@ function ClinicPortal({
           <div className="headerActions">
             <button
               className="primary"
-              onClick={() => setActive("Appointments")}
+              onClick={() => setActive("Manage Appointments")}
             >
               <Plus size={18} /> New appointment
             </button>
@@ -364,7 +367,7 @@ function ClinicPortal({
       <button
         className="mobileCreate"
         aria-label="New appointment"
-        onClick={() => setActive("Appointments")}
+        onClick={() => setActive("Manage Appointments")}
       >
         <Plus />
       </button>
