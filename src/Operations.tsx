@@ -1097,6 +1097,12 @@ function Appointments({
       setError((x as Error).message);
     }
   }
+  function chooseMonthlySlot(slotDate: string, value: string) {
+    setSelectedSlots((current) => {
+      const withoutDate = current.filter((slot) => !slot.startsWith(slotDate));
+      return value ? [...withoutDate, value] : withoutDate;
+    });
+  }
   return (
     <Page
       title="Appointments"
@@ -1188,7 +1194,9 @@ function Appointments({
             />
           </label>
         )}
-        <div className="slotPicker">
+        <div
+          className={`slotPicker ${bookingMode === "SINGLE" ? "singleSlotPicker" : ""}`}
+        >
           <div className="slotPickerHead">
             <b>Available slots</b>
             <small>{selectedSlots.length} selected</small>
@@ -1200,6 +1208,22 @@ function Appointments({
               No available slots for this{" "}
               {bookingMode === "SINGLE" ? "date" : "month"}.
             </p>
+          ) : bookingMode === "SINGLE" ? (
+            <label className="singleSlotSelect">
+              Available slot
+              <select
+                value={selectedSlots[0] || ""}
+                onChange={(e) =>
+                  setSelectedSlots(e.target.value ? [e.target.value] : [])
+                }
+              >
+                <option value="">Select an available slot</option>
+                {slots.map((x) => (
+                  <option value={x.startsAt}>{x.label}</option>
+                ))}
+              </select>
+              <small>Only free practitioner and room slots are shown.</small>
+            </label>
           ) : (
             Object.entries(groupByDate(slots)).map(([slotDate, daySlots]) => (
               <section className="slotDay" key={slotDate}>
@@ -1210,27 +1234,18 @@ function Appointments({
                     month: "short",
                   }).format(new Date(`${slotDate}T00:00:00`))}
                 </h4>
-                <div>
+                <select
+                  value={
+                    selectedSlots.find((slot) => slot.startsWith(slotDate)) ||
+                    ""
+                  }
+                  onChange={(e) => chooseMonthlySlot(slotDate, e.target.value)}
+                >
+                  <option value="">No session this date</option>
                   {daySlots.map((x) => (
-                    <button
-                      type="button"
-                      className={
-                        selectedSlots.includes(x.startsAt) ? "selected" : ""
-                      }
-                      onClick={() =>
-                        setSelectedSlots((current) =>
-                          current.includes(x.startsAt)
-                            ? current.filter((v) => v !== x.startsAt)
-                            : bookingMode === "SINGLE"
-                              ? [x.startsAt]
-                              : [...current, x.startsAt],
-                        )
-                      }
-                    >
-                      {x.label}
-                    </button>
+                    <option value={x.startsAt}>{x.label}</option>
                   ))}
-                </div>
+                </select>
               </section>
             ))
           )}
