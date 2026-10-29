@@ -131,6 +131,18 @@ const groupByDate = (rows: Row[]) =>
     (groups[String(row.date)] ??= []).push(row);
     return groups;
   }, {});
+const idList = (value: any): string[] => {
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
 const fileData = (file: File | null) =>
   new Promise<string>((resolve, reject) => {
     if (!file || !file.size) return resolve("");
@@ -643,9 +655,7 @@ function Customers({ token }: { token: string }) {
                   <select
                     name="serviceIds"
                     multiple
-                    defaultValue={
-                      Array.isArray(r.service_ids) ? r.service_ids : []
-                    }
+                    defaultValue={idList(r.service_ids)}
                   >
                     {services.rows.map((s) => (
                       <option value={s.id}>{s.name}</option>
@@ -1025,9 +1035,7 @@ function Partners({ token, owner }: { token: string; owner: boolean }) {
                     <select
                       name="serviceIds"
                       multiple
-                      defaultValue={
-                        Array.isArray(r.service_ids) ? r.service_ids : []
-                      }
+                      defaultValue={idList(r.service_ids)}
                     >
                       {services.rows.map((s) => (
                         <option value={s.id}>{s.name}</option>
