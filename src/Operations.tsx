@@ -125,6 +125,11 @@ function CreateForm({
 }
 const field = (f: FormData, n: string) => String(f.get(n) || "");
 const selected = (f: FormData, n: string) => f.getAll(n).map(String);
+const groupByDate = (rows: Row[]) =>
+  rows.reduce<Record<string, Row[]>>((groups, row) => {
+    (groups[String(row.date)] ??= []).push(row);
+    return groups;
+  }, {});
 const fileData = (file: File | null) =>
   new Promise<string>((resolve, reject) => {
     if (!file || !file.size) return resolve("");
@@ -995,8 +1000,11 @@ function Appointments({
   const [practitionerId, setPractitionerId] = useState(""),
     [serviceId, setServiceId] = useState(""),
     [bookingDate, setBookingDate] = useState(date),
+    [bookingMonth, setBookingMonth] = useState(date.slice(0, 7)),
+    [bookingMode, setBookingMode] = useState<"SINGLE" | "MONTH">("SINGLE"),
     [serviceOptions, setServiceOptions] = useState<Row[]>([]),
-    [slots, setSlots] = useState<Row[]>([]);
+    [slots, setSlots] = useState<Row[]>([]),
+    [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   useEffect(() => {
     if (!practitionerId) {
       setServiceOptions([]);
@@ -1007,30 +1015,41 @@ function Appointments({
       .catch((e) => setError(e.message));
   }, [practitionerId, token]);
   useEffect(() => {
-    if (!practitionerId || !serviceId || !bookingDate) {
+    const month =
+      bookingMode === "SINGLE" ? bookingDate.slice(0, 7) : bookingMonth;
+    if (!practitionerId || !serviceId || !month) {
       setSlots([]);
       return;
     }
     api<Row[]>(
-      `/slots?practitionerId=${practitionerId}&serviceId=${serviceId}&date=${bookingDate}`,
+      `/availability/month?practitionerId=${practitionerId}&serviceId=${serviceId}&month=${month}`,
       {},
       token,
     )
-      .then(setSlots)
+      .then((rows) => {
+        setSlots(
+          bookingMode === "SINGLE"
+            ? rows.filter((x) => x.date === bookingDate)
+            : rows,
+        );
+        setSelectedSlots([]);
+      })
       .catch((e) => setError(e.message));
-  }, [practitionerId, serviceId, bookingDate, token]);
+  }, [
+    practitionerId,
+    serviceId,
+    bookingDate,
+    bookingMonth,
+    bookingMode,
+    token,
+  ]);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget,
       f = new FormData(form);
     try {
-      const first = field(f, "startsAt"),
-        weeks = Math.max(1, Number(field(f, "repeatWeeks") || 1));
-      const startsAt = Array.from({ length: weeks }, (_, i) => {
-        const d = new Date(first);
-        d.setDate(d.getDate() + i * 7);
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-      });
+      if (!selectedSlots.length)
+        throw new Error("Select at least one available slot");
       await api(
         "/appointments/series",
         {
@@ -1039,15 +1058,16 @@ function Appointments({
             customerId: field(f, "customerId"),
             practitionerId,
             serviceId,
-            startsAt,
+            startsAt: selectedSlots,
           }),
         },
         token,
       );
       form.reset();
       setOk(
-        `${weeks} appointment${weeks > 1 ? "s" : ""} booked; rooms allocated and slots locked.`,
+        `${selectedSlots.length} appointment${selectedSlots.length > 1 ? "s" : ""} booked. Those slots are no longer offered to other bookings.`,
       );
+      setSelectedSlots([]);
       data.load();
       onCreated();
     } catch (x) {
@@ -1084,6 +1104,27 @@ function Appointments({
       icon={CalendarDays}
     >
       <CreateForm title="New appointment" onSubmit={submit}>
+        <fieldset className="bookingMode">
+          <legend>Booking type</legend>
+          <label>
+            <input
+              type="radio"
+              name="bookingMode"
+              checked={bookingMode === "SINGLE"}
+              onChange={() => setBookingMode("SINGLE")}
+            />
+            One session
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="bookingMode"
+              checked={bookingMode === "MONTH"}
+              onChange={() => setBookingMode("MONTH")}
+            />
+            Choose sessions for a month
+          </label>
+        </fieldset>
         <label>
           Customer
           <select name="customerId" required>
@@ -1125,39 +1166,75 @@ function Appointments({
             ))}
           </select>
         </label>
-        <label>
-          Appointment date
-          <input
-            name="bookingDate"
-            type="date"
-            required
-            value={bookingDate}
-            onChange={(e) => setBookingDate(e.target.value)}
-          />
-        </label>
-        <label>
-          Available slot
-          <select name="startsAt" required disabled={!slots.length}>
-            <option value="">Select available slot</option>
-            {slots.map((x) => (
-              <option value={x.startsAt} disabled={!x.available}>
-                {x.label}
-                {x.available ? "" : " — unavailable"}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Weekly sessions
-          <input
-            name="repeatWeeks"
-            type="number"
-            min="1"
-            max="12"
-            defaultValue="1"
-          />
-          <small>Use 4 for the same slot weekly for a month.</small>
-        </label>
+        {bookingMode === "SINGLE" ? (
+          <label>
+            Appointment date
+            <input
+              name="bookingDate"
+              type="date"
+              required
+              value={bookingDate}
+              onChange={(e) => setBookingDate(e.target.value)}
+            />
+          </label>
+        ) : (
+          <label>
+            Booking month
+            <input
+              type="month"
+              value={bookingMonth}
+              min={new Date().toISOString().slice(0, 7)}
+              onChange={(e) => setBookingMonth(e.target.value)}
+            />
+          </label>
+        )}
+        <div className="slotPicker">
+          <div className="slotPickerHead">
+            <b>Available slots</b>
+            <small>{selectedSlots.length} selected</small>
+          </div>
+          {!practitionerId || !serviceId ? (
+            <p>Select a practitioner and service first.</p>
+          ) : !slots.length ? (
+            <p>
+              No available slots for this{" "}
+              {bookingMode === "SINGLE" ? "date" : "month"}.
+            </p>
+          ) : (
+            Object.entries(groupByDate(slots)).map(([slotDate, daySlots]) => (
+              <section className="slotDay" key={slotDate}>
+                <h4>
+                  {new Intl.DateTimeFormat("en-IN", {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                  }).format(new Date(`${slotDate}T00:00:00`))}
+                </h4>
+                <div>
+                  {daySlots.map((x) => (
+                    <button
+                      type="button"
+                      className={
+                        selectedSlots.includes(x.startsAt) ? "selected" : ""
+                      }
+                      onClick={() =>
+                        setSelectedSlots((current) =>
+                          current.includes(x.startsAt)
+                            ? current.filter((v) => v !== x.startsAt)
+                            : bookingMode === "SINGLE"
+                              ? [x.startsAt]
+                              : [...current, x.startsAt],
+                        )
+                      }
+                    >
+                      {x.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))
+          )}
+        </div>
       </CreateForm>
       <Notice error={error || data.error} ok={ok} />
       <label className="dateFilter">

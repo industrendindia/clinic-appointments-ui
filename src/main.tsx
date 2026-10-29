@@ -280,7 +280,20 @@ function ClinicPortal({
         </div>
         <nav>
           {nav
-            .filter(([n]) => user.role === "OWNER" || n !== "Partners")
+            .filter(
+              ([n]) =>
+                user.role === "OWNER" ||
+                (user.role === "RECEPTIONIST"
+                  ? n !== "Partners"
+                  : ![
+                      "Appointments",
+                      "Customers",
+                      "Payments",
+                      "Attendance",
+                      "Settings",
+                      "Partners",
+                    ].includes(n)),
+            )
             .map(([n, I]) => (
               <button
                 className={n === active ? "active" : ""}
