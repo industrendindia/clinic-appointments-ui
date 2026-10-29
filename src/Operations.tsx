@@ -986,7 +986,8 @@ function Appointments({
   onCreated: () => void;
 }) {
   const customers = useRows("/customers?q=", token),
-    practitioners = useRows("/practitioners", token);
+    practitioners = useRows("/practitioners", token),
+    allServices = useRows("/services", token);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10)),
     data = useRows(`/appointments?date=${date}`, token),
     [error, setError] = useState(""),
@@ -1049,6 +1050,29 @@ function Appointments({
       );
       data.load();
       onCreated();
+    } catch (x) {
+      setError((x as Error).message);
+    }
+  }
+  async function modify(id: string, e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    try {
+      await api(
+        `/appointments/${id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            serviceId: field(f, "serviceId"),
+            startsAt: field(f, "startsAt"),
+          }),
+        },
+        token,
+      );
+      setOk(
+        "This appointment was updated without changing the rest of its series.",
+      );
+      data.load();
     } catch (x) {
       setError((x as Error).message);
     }
@@ -1163,31 +1187,50 @@ function Appointments({
                 })}
               </em>
               {r.status === "BOOKED" && (
-                <button
-                  className="linkDanger"
-                  onClick={async () => {
-                    const reason = window.prompt("Cancellation reason") || "";
-                    if (!reason) return;
-                    try {
-                      await api(
-                        `/appointments/${r.id}/cancel`,
-                        {
-                          method: "POST",
-                          body: JSON.stringify({
-                            reason,
-                            cancelledBy: "CUSTOMER",
-                          }),
-                        },
-                        token,
-                      );
-                      data.load();
-                    } catch (x) {
-                      setError((x as Error).message);
-                    }
-                  }}
-                >
-                  Cancel
-                </button>
+                <>
+                  <details className="modifyBooking">
+                    <summary>Modify</summary>
+                    <form onSubmit={(e) => modify(r.id, e)}>
+                      <select name="serviceId" defaultValue={r.service_id}>
+                        {allServices.rows.map((s) => (
+                          <option value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                      <input
+                        name="startsAt"
+                        type="datetime-local"
+                        defaultValue={String(r.starts_at).slice(0, 16)}
+                      />
+                      <button>Save this date</button>
+                    </form>
+                  </details>
+                  <button
+                    className="linkDanger"
+                    type="button"
+                    onClick={async () => {
+                      const reason = window.prompt("Cancellation reason") || "";
+                      if (!reason) return;
+                      try {
+                        await api(
+                          `/appointments/${r.id}/cancel`,
+                          {
+                            method: "POST",
+                            body: JSON.stringify({
+                              reason,
+                              cancelledBy: "CUSTOMER",
+                            }),
+                          },
+                          token,
+                        );
+                        data.load();
+                      } catch (x) {
+                        setError((x as Error).message);
+                      }
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </>
               )}
             </div>
           </>
