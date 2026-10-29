@@ -39,6 +39,8 @@ export type User = {
   clinicId?: string;
   branchId?: string;
   clinic_name?: string;
+  logo_base64?: string;
+  logo_content_type?: string;
   branch_name?: string;
   theme?: string;
   default_slot_minutes?: number;
@@ -106,6 +108,14 @@ export async function api<T>(
     );
   return body as T;
 }
+const readFileBase64 = (file: File | null) =>
+  new Promise<string>((resolve, reject) => {
+    if (!file || !file.size) return resolve("");
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 
 function App() {
   const [token, setToken] = useState(
@@ -271,7 +281,16 @@ function ClinicPortal({
     <div className={`app theme-${user.theme || "terracotta"}`}>
       <aside className={drawer ? "side open" : "side"}>
         <div className="brand">
-          <div className="mark">{(user.clinic_name || "C")[0]}</div>
+          <div className="mark">
+            {user.logo_base64 ? (
+              <img
+                src={`data:${user.logo_content_type};base64,${user.logo_base64}`}
+                alt={`${user.clinic_name} logo`}
+              />
+            ) : (
+              (user.clinic_name || "C")[0]
+            )}
+          </div>
           <div>
             <b>{user.clinic_name}</b>
             <small>{user.branch_name}</small>
@@ -544,6 +563,7 @@ function AdminPortal({
     const form = e.currentTarget;
     const f = new FormData(form);
     const body = Object.fromEntries(f.entries());
+    const logo = f.get("logo") as File;
     try {
       await api(
         "/admin/clinics",
@@ -552,6 +572,9 @@ function AdminPortal({
           body: JSON.stringify({
             ...body,
             slotMinutes: Number(body.slotMinutes),
+            logoBase64: await readFileBase64(logo),
+            logoContentType: logo?.type || null,
+            logoOriginalName: logo?.name || null,
           }),
         },
         token,
@@ -666,6 +689,14 @@ function AdminPortal({
             Clinic email
             <input name="email" type="email" placeholder="clinic@example.com" />
           </label>
+          <label>
+            Clinic logo
+            <input
+              name="logo"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+            />
+          </label>
           <span />
           <h3 className="wide">
             <UserRoundPlus /> Owner account
@@ -734,19 +765,76 @@ function AdminPortal({
 function ClinicSearch({ token }: { token: string }) {
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<Record<string, any>[]>([]);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(""),
+    [ok, setOk] = useState("");
+  const [page, setPage] = useState(0),
+    [totalPages, setTotalPages] = useState(0),
+    [totalElements, setTotalElements] = useState(0);
+  const [selected, setSelected] = useState<Record<string, any> | null>(null);
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      api<Record<string, any>[]>(
-        `/admin/clinics?q=${encodeURIComponent(q)}`,
+      api<{
+        content: Record<string, any>[];
+        totalPages: number;
+        totalElements: number;
+      }>(
+        `/admin/clinics?q=${encodeURIComponent(q)}&page=${page}&size=10`,
         {},
         token,
       )
-        .then(setRows)
+        .then((result) => {
+          setRows(result.content);
+          setTotalPages(result.totalPages);
+          setTotalElements(result.totalElements);
+        })
         .catch((e) => setError(e.message));
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [q, token]);
+  }, [q, page, token]);
+  async function choose(id: string) {
+    setError("");
+    try {
+      setSelected(
+        await api<Record<string, any>>(`/admin/clinics/${id}`, {}, token),
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  async function save(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!selected) return;
+    const f = new FormData(e.currentTarget),
+      logo = f.get("logo") as File;
+    try {
+      await api(
+        `/admin/clinics/${selected.id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            clinicName: String(f.get("clinicName")),
+            branchName: String(f.get("branchName")),
+            address: String(f.get("address")),
+            ownerPhone: String(f.get("ownerPhone")),
+            whatsappPhone: String(f.get("whatsappPhone")),
+            email: String(f.get("email")),
+            opensAt: String(f.get("opensAt")),
+            closesAt: String(f.get("closesAt")),
+            slotMinutes: Number(f.get("slotMinutes")),
+            active: f.get("active") === "on",
+            logoBase64: await readFileBase64(logo),
+            logoContentType: logo?.type || null,
+            logoOriginalName: logo?.name || null,
+          }),
+        },
+        token,
+      );
+      setOk("Clinic details saved.");
+      await choose(String(selected.id));
+    } catch (x) {
+      setError((x as Error).message);
+    }
+  }
   return (
     <section className="clinicSearch panel">
       <div className="adminIntro">
@@ -758,14 +846,26 @@ function ClinicSearch({ token }: { token: string }) {
         <Search />
         <input
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setPage(0);
+          }}
           placeholder="Search all clinics"
         />
       </label>
       {error && <div className="formError">{error}</div>}
+      {ok && <div className="formSuccess">{ok}</div>}
+      <small>
+        {totalElements} clinic{totalElements === 1 ? "" : "s"} found
+      </small>
       <div className="recordList">
         {rows.map((r) => (
-          <article className="record" key={r.id}>
+          <button
+            type="button"
+            className="record clinicResult"
+            key={r.id}
+            onClick={() => choose(r.id)}
+          >
             <div>
               <b>{r.name}</b>
               <small>
@@ -775,9 +875,137 @@ function ClinicSearch({ token }: { token: string }) {
             <em>
               {r.branches} branch · {r.users} users
             </em>
-          </article>
+          </button>
         ))}
       </div>
+      <div className="pagination">
+        <button disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+          Previous
+        </button>
+        <span>
+          Page {totalPages ? page + 1 : 0} of {totalPages}
+        </span>
+        <button
+          disabled={page + 1 >= totalPages}
+          onClick={() => setPage((p) => p + 1)}
+        >
+          Next
+        </button>
+      </div>
+      {selected && (
+        <form className="onboardForm clinicEdit" onSubmit={save}>
+          <h3 className="wide">
+            <Building2 />
+            Edit clinic
+          </h3>
+          {selected.logo_base64 && (
+            <img
+              className="adminClinicLogo"
+              src={`data:${selected.logo_content_type};base64,${selected.logo_base64}`}
+              alt="Clinic logo"
+            />
+          )}
+          <label>
+            Clinic name
+            <input
+              name="clinicName"
+              defaultValue={selected.clinic_name}
+              required
+            />
+          </label>
+          <label>
+            Slug
+            <input value={selected.slug} disabled />
+          </label>
+          <label>
+            Branch name
+            <input
+              name="branchName"
+              defaultValue={selected.branch_name}
+              required
+            />
+          </label>
+          <label>
+            Address
+            <input name="address" defaultValue={selected.address} required />
+          </label>
+          <label>
+            Opening time
+            <input
+              name="opensAt"
+              type="time"
+              defaultValue={String(selected.opens_at).slice(0, 5)}
+            />
+          </label>
+          <label>
+            Closing time
+            <input
+              name="closesAt"
+              type="time"
+              defaultValue={String(selected.closes_at).slice(0, 5)}
+            />
+          </label>
+          <label>
+            Slot minutes
+            <input
+              name="slotMinutes"
+              type="number"
+              min="15"
+              defaultValue={selected.default_slot_minutes}
+            />
+          </label>
+          <label>
+            Owner name
+            <input value={selected.owner_name || ""} disabled />
+          </label>
+          <label>
+            Owner login
+            <input value={selected.owner_username || ""} disabled />
+          </label>
+          <label>
+            Owner phone
+            <input
+              name="ownerPhone"
+              defaultValue={selected.owner_phone || ""}
+              required
+            />
+          </label>
+          <label>
+            WhatsApp
+            <input
+              name="whatsappPhone"
+              defaultValue={selected.whatsapp_phone || ""}
+            />
+          </label>
+          <label>
+            Email
+            <input
+              name="email"
+              type="email"
+              defaultValue={selected.email || ""}
+            />
+          </label>
+          <label>
+            Replace logo
+            <input
+              name="logo"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+            />
+          </label>
+          <label className="checkField">
+            <input
+              name="active"
+              type="checkbox"
+              defaultChecked={selected.active}
+            />
+            Clinic active
+          </label>
+          <div className="wide formActions">
+            <button className="primary">Save clinic changes</button>
+          </div>
+        </form>
+      )}
     </section>
   );
 }
