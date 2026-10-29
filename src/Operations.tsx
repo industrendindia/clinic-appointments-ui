@@ -124,6 +124,15 @@ function CreateForm({
   );
 }
 const field = (f: FormData, n: string) => String(f.get(n) || "");
+const selected = (f: FormData, n: string) => f.getAll(n).map(String);
+const fileData = (file: File | null) =>
+  new Promise<string>((resolve, reject) => {
+    if (!file || !file.size) return resolve("");
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 
 export function OperationsPage({
   active,
@@ -147,34 +156,176 @@ export function OperationsPage({
     return <Appointments token={token} onCreated={onAppointmentCreated} />;
   if (active === "Payments") return <Payments token={token} />;
   if (active === "Attendance") return <Attendance token={token} />;
+  return <Settings token={token} />;
+}
+
+function Settings({ token }: { token: string }) {
+  const [value, setValue] = useState<Row | null>(null),
+    [error, setError] = useState(""),
+    [ok, setOk] = useState("");
+  useEffect(() => {
+    api<Row>("/settings", {}, token)
+      .then(setValue)
+      .catch((e) => setError(e.message));
+  }, [token]);
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    try {
+      await api(
+        "/settings",
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            theme: field(f, "theme"),
+            defaultSlotMinutes: Number(field(f, "defaultSlotMinutes")),
+            freeCustomerCancellations: Number(
+              field(f, "freeCustomerCancellations"),
+            ),
+            practitionerCancelCredit: Number(
+              field(f, "practitionerCancelCredit"),
+            ),
+            cancellationNoticeHours: Number(
+              field(f, "cancellationNoticeHours"),
+            ),
+            opensAt: field(f, "opensAt"),
+            closesAt: field(f, "closesAt"),
+            whatsappPhone: field(f, "whatsappPhone"),
+            email: field(f, "email"),
+            logoUrl: field(f, "logoUrl"),
+            paymentOtp: field(f, "paymentOtp"),
+          }),
+        },
+        token,
+      );
+      setOk(
+        "Clinic policies saved. Sign in again to apply the selected theme.",
+      );
+    } catch (x) {
+      setError((x as Error).message);
+    }
+  }
+  if (!value)
+    return (
+      <Page
+        title="Clinic settings"
+        subtitle="Loading database configuration…"
+        icon={Menu}
+      >
+        <Notice error={error} ok="" />
+      </Page>
+    );
   return (
     <Page
       title="Clinic settings"
-      subtitle="Clinic identity and working hours are loaded from the database."
+      subtitle="Manage branch hours, booking policies, branding and payment confirmation."
       icon={Menu}
     >
-      <section className="panel">
-        <dl className="settingsList">
-          <div>
-            <dt>Clinic</dt>
-            <dd>{user.clinic_name}</dd>
-          </div>
-          <div>
-            <dt>Branch</dt>
-            <dd>{user.branch_name}</dd>
-          </div>
-          <div>
-            <dt>Default session</dt>
-            <dd>{user.default_slot_minutes} minutes</dd>
-          </div>
-          <div>
-            <dt>Working hours</dt>
-            <dd>
-              {user.opens_at} – {user.closes_at}
-            </dd>
-          </div>
-        </dl>
-      </section>
+      <form className="createForm" onSubmit={submit}>
+        <div className="formGrid">
+          <label>
+            Warm theme
+            <select name="theme" defaultValue={value.theme}>
+              {[
+                "terracotta",
+                "sage",
+                "sunset",
+                "rose",
+                "sand",
+                "plum",
+                "ocean",
+                "marigold",
+                "lavender",
+              ].map((x) => (
+                <option value={x}>{x}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Opening time
+            <input
+              name="opensAt"
+              type="time"
+              defaultValue={String(value.opens_at).slice(0, 5)}
+            />
+          </label>
+          <label>
+            Closing time
+            <input
+              name="closesAt"
+              type="time"
+              defaultValue={String(value.closes_at).slice(0, 5)}
+            />
+          </label>
+          <label>
+            Default slot minutes
+            <input
+              name="defaultSlotMinutes"
+              type="number"
+              min="15"
+              max="180"
+              defaultValue={value.default_slot_minutes}
+            />
+          </label>
+          <label>
+            Free customer cancellations
+            <input
+              name="freeCustomerCancellations"
+              type="number"
+              min="0"
+              defaultValue={value.free_customer_cancellations}
+            />
+          </label>
+          <label>
+            Cancellation notice hours
+            <input
+              name="cancellationNoticeHours"
+              type="number"
+              min="0"
+              defaultValue={value.cancellation_notice_hours}
+            />
+          </label>
+          <label>
+            Doctor cancellation credit
+            <input
+              name="practitionerCancelCredit"
+              type="number"
+              min="0"
+              defaultValue={value.practitioner_cancel_credit}
+            />
+          </label>
+          <label>
+            WhatsApp number
+            <input
+              name="whatsappPhone"
+              defaultValue={value.whatsapp_phone || ""}
+            />
+          </label>
+          <label>
+            Clinic email
+            <input name="email" type="email" defaultValue={value.email || ""} />
+          </label>
+          <label>
+            Logo URL
+            <input
+              name="logoUrl"
+              type="url"
+              defaultValue={value.logo_url || ""}
+            />
+          </label>
+          <label>
+            New payment OTP
+            <input
+              name="paymentOtp"
+              inputMode="numeric"
+              pattern="[0-9]{6}"
+              placeholder="Leave blank to keep current"
+            />
+          </label>
+        </div>
+        <button className="primary">Save clinic settings</button>
+      </form>
+      <Notice error={error} ok={ok} />
     </Page>
   );
 }
@@ -195,6 +346,7 @@ function Rooms({ token, owner }: { token: string; owner: boolean }) {
           body: JSON.stringify({
             name: field(f, "name"),
             roomType: field(f, "roomType"),
+            active: f.get("active") === "on",
           }),
         },
         token,
@@ -227,6 +379,10 @@ function Rooms({ token, owner }: { token: string; owner: boolean }) {
               <option>GENERAL</option>
             </select>
           </label>
+          <label className="checkField">
+            <input name="active" type="checkbox" defaultChecked />
+            Available for booking
+          </label>
         </CreateForm>
       )}
       <Notice error={error || data.error} ok={ok} />
@@ -250,6 +406,7 @@ function Rooms({ token, owner }: { token: string; owner: boolean }) {
 function Customers({ token }: { token: string }) {
   const [q, setQ] = useState("");
   const data = useRows(`/customers?q=${encodeURIComponent(q)}`, token),
+    services = useRows("/services", token),
     [error, setError] = useState(""),
     [ok, setOk] = useState("");
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -265,6 +422,11 @@ function Customers({ token }: { token: string }) {
             fullName: field(f, "fullName"),
             phone: field(f, "phone"),
             email: field(f, "email") || null,
+            dob: field(f, "dob") || null,
+            address: field(f, "address") || null,
+            guardianName: field(f, "guardianName") || null,
+            guardianPhone: field(f, "guardianPhone") || null,
+            serviceIds: selected(f, "serviceIds"),
           }),
         },
         token,
@@ -294,6 +456,35 @@ function Customers({ token }: { token: string }) {
         <label>
           Email
           <input name="email" type="email" />
+        </label>
+        <label>
+          Date of birth
+          <input name="dob" type="date" />
+        </label>
+        <label>
+          Address
+          <input name="address" />
+        </label>
+        <label>
+          Guardian name
+          <input name="guardianName" />
+        </label>
+        <label>
+          Guardian phone
+          <input name="guardianPhone" inputMode="tel" />
+        </label>
+        <label>
+          Services needed
+          <select
+            name="serviceIds"
+            multiple
+            size={Math.min(4, Math.max(2, services.rows.length))}
+          >
+            {services.rows.map((s) => (
+              <option value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <small>Use Ctrl/⌘ to select more than one.</small>
         </label>
       </CreateForm>
       <label className="pageSearch">
@@ -327,6 +518,7 @@ function Customers({ token }: { token: string }) {
 
 function Partners({ token, owner }: { token: string; owner: boolean }) {
   const data = useRows("/practitioners", token),
+    services = useRows("/services", token),
     [error, setError] = useState(""),
     [ok, setOk] = useState("");
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -334,8 +526,10 @@ function Partners({ token, owner }: { token: string; owner: boolean }) {
     const form = e.currentTarget,
       f = new FormData(form);
     try {
+      const photo = f.get("photo") as File,
+        docs = f.get("documents") as File;
       await api(
-        "/staff",
+        "/practitioners/onboard",
         {
           method: "POST",
           body: JSON.stringify({
@@ -343,9 +537,23 @@ function Partners({ token, owner }: { token: string; owner: boolean }) {
             password: field(f, "password"),
             displayName: field(f, "displayName"),
             phone: field(f, "phone"),
-            role: "PRACTITIONER",
+            dob: field(f, "dob") || null,
+            joinedOn: field(f, "joinedOn") || null,
             engagement: field(f, "engagement"),
             yearsExperience: Number(field(f, "yearsExperience")),
+            rate: Number(field(f, "rate") || 0),
+            salary: Number(field(f, "salary") || 0),
+            serviceIds: selected(f, "serviceIds"),
+            availability: selected(f, "days").map((day) => ({
+              dayOfWeek: Number(day),
+              startsAt: field(f, "availableFrom"),
+              endsAt: field(f, "availableTo"),
+            })),
+            photoBase64: await fileData(photo),
+            photoContentType: photo?.type || null,
+            documentZipBase64: await fileData(docs),
+            documentZipName: docs?.name || null,
+            createLogin: f.get("createLogin") === "on",
           }),
         },
         token,
@@ -357,6 +565,31 @@ function Partners({ token, owner }: { token: string; owner: boolean }) {
       setError((x as Error).message);
     }
   }
+  async function submitReceptionist(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget,
+      f = new FormData(form);
+    try {
+      await api(
+        "/receptionists",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            displayName: field(f, "displayName"),
+            username: field(f, "username"),
+            password: field(f, "password"),
+            phone: field(f, "phone"),
+            joinedOn: field(f, "joinedOn") || null,
+          }),
+        },
+        token,
+      );
+      form.reset();
+      setOk("Receptionist account created.");
+    } catch (x) {
+      setError((x as Error).message);
+    }
+  }
   return (
     <Page
       title="Partner practitioners"
@@ -364,42 +597,149 @@ function Partners({ token, owner }: { token: string; owner: boolean }) {
       icon={Stethoscope}
     >
       {owner && (
-        <CreateForm title="Add practitioner" onSubmit={submit}>
-          <label>
-            Name
-            <input name="displayName" required />
-          </label>
-          <label>
-            Login email
-            <input name="username" type="email" required />
-          </label>
-          <label>
-            Temporary password
-            <input name="password" type="password" minLength={12} required />
-          </label>
-          <label>
-            Phone
-            <input name="phone" inputMode="tel" />
-          </label>
-          <label>
-            Engagement
-            <select name="engagement">
-              <option>FULL_TIME</option>
-              <option>PART_TIME</option>
-              <option>VISITING</option>
-            </select>
-          </label>
-          <label>
-            Experience (years)
-            <input
-              name="yearsExperience"
-              type="number"
-              min="0"
-              step="0.5"
-              defaultValue="0"
-            />
-          </label>
-        </CreateForm>
+        <>
+          <CreateForm title="Add practitioner" onSubmit={submit}>
+            <label>
+              Name
+              <input name="displayName" required />
+            </label>
+            <label>
+              Login email
+              <input
+                name="username"
+                type="email"
+                placeholder="Optional when no login is created"
+              />
+            </label>
+            <label>
+              Temporary password
+              <input
+                name="password"
+                type="password"
+                minLength={12}
+                placeholder="At least 12 characters"
+              />
+            </label>
+            <label>
+              Phone
+              <input name="phone" inputMode="tel" />
+            </label>
+            <label>
+              Date of birth
+              <input name="dob" type="date" />
+            </label>
+            <label>
+              Date joined
+              <input name="joinedOn" type="date" required />
+            </label>
+            <label>
+              Engagement
+              <select name="engagement">
+                <option>FULL_TIME</option>
+                <option>PART_TIME</option>
+                <option>VISITING</option>
+              </select>
+            </label>
+            <label>
+              Experience (years)
+              <input
+                name="yearsExperience"
+                type="number"
+                min="0"
+                step="0.5"
+                defaultValue="0"
+              />
+            </label>
+            <label>
+              Per-session rate
+              <input name="rate" type="number" min="0" step="0.01" />
+            </label>
+            <label>
+              Monthly salary
+              <input name="salary" type="number" min="0" step="0.01" />
+            </label>
+            <label>
+              Services provided
+              <select
+                name="serviceIds"
+                multiple
+                required
+                size={Math.min(5, Math.max(2, services.rows.length))}
+              >
+                {services.rows.map((s) => (
+                  <option value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </label>
+            <fieldset className="availability">
+              <legend>Available days</legend>
+              {[
+                [1, "Mon"],
+                [2, "Tue"],
+                [3, "Wed"],
+                [4, "Thu"],
+                [5, "Fri"],
+                [6, "Sat"],
+                [7, "Sun"],
+              ].map(([v, n]) => (
+                <label>
+                  <input type="checkbox" name="days" value={v} />
+                  {n}
+                </label>
+              ))}
+            </fieldset>
+            <label>
+              Available from
+              <input name="availableFrom" type="time" defaultValue="09:30" />
+            </label>
+            <label>
+              Available to
+              <input name="availableTo" type="time" defaultValue="20:00" />
+            </label>
+            <label>
+              Profile photo
+              <input
+                name="photo"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+              />
+            </label>
+            <label>
+              Documents ZIP
+              <input
+                name="documents"
+                type="file"
+                accept=".zip,application/zip"
+              />
+            </label>
+            <label className="checkField">
+              <input name="createLogin" type="checkbox" defaultChecked />
+              Create practitioner login
+            </label>
+          </CreateForm>
+          <CreateForm title="Add receptionist" onSubmit={submitReceptionist}>
+            <label>
+              Name
+              <input name="displayName" required />
+            </label>
+            <label>
+              Login email
+              <input name="username" type="email" required />
+            </label>
+            <label>
+              Temporary password
+              <input name="password" type="password" minLength={12} required />
+            </label>
+            <label>
+              Phone
+              <input name="phone" inputMode="tel" />
+            </label>
+            <label>
+              Date joined
+              <input name="joinedOn" type="date" />
+            </label>
+          </CreateForm>
+        </>
       )}
       <Notice error={error || data.error} ok={ok} />
       <CardList
@@ -410,7 +750,8 @@ function Partners({ token, owner }: { token: string; owner: boolean }) {
             <div>
               <b>{r.full_name}</b>
               <small>
-                {r.username} · {r.engagement}
+                {r.username || "No portal login"} · {r.engagement} ·{" "}
+                {r.services || "No services assigned"}
               </small>
             </div>
             <em>{r.years_experience} years</em>
@@ -645,32 +986,67 @@ function Appointments({
   onCreated: () => void;
 }) {
   const customers = useRows("/customers?q=", token),
-    practitioners = useRows("/practitioners", token),
-    services = useRows("/services", token);
+    practitioners = useRows("/practitioners", token);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10)),
     data = useRows(`/appointments?date=${date}`, token),
     [error, setError] = useState(""),
     [ok, setOk] = useState("");
+  const [practitionerId, setPractitionerId] = useState(""),
+    [serviceId, setServiceId] = useState(""),
+    [bookingDate, setBookingDate] = useState(date),
+    [serviceOptions, setServiceOptions] = useState<Row[]>([]),
+    [slots, setSlots] = useState<Row[]>([]);
+  useEffect(() => {
+    if (!practitionerId) {
+      setServiceOptions([]);
+      return;
+    }
+    api<Row[]>(`/practitioners/${practitionerId}/services`, {}, token)
+      .then(setServiceOptions)
+      .catch((e) => setError(e.message));
+  }, [practitionerId, token]);
+  useEffect(() => {
+    if (!practitionerId || !serviceId || !bookingDate) {
+      setSlots([]);
+      return;
+    }
+    api<Row[]>(
+      `/slots?practitionerId=${practitionerId}&serviceId=${serviceId}&date=${bookingDate}`,
+      {},
+      token,
+    )
+      .then(setSlots)
+      .catch((e) => setError(e.message));
+  }, [practitionerId, serviceId, bookingDate, token]);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget,
       f = new FormData(form);
     try {
+      const first = field(f, "startsAt"),
+        weeks = Math.max(1, Number(field(f, "repeatWeeks") || 1));
+      const startsAt = Array.from({ length: weeks }, (_, i) => {
+        const d = new Date(first);
+        d.setDate(d.getDate() + i * 7);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      });
       await api(
-        "/appointments",
+        "/appointments/series",
         {
           method: "POST",
           body: JSON.stringify({
             customerId: field(f, "customerId"),
-            practitionerId: field(f, "practitionerId"),
-            serviceId: field(f, "serviceId"),
-            startsAt: field(f, "startsAt"),
+            practitionerId,
+            serviceId,
+            startsAt,
           }),
         },
         token,
       );
       form.reset();
-      setOk("Appointment booked and room allocated.");
+      setOk(
+        `${weeks} appointment${weeks > 1 ? "s" : ""} booked; rooms allocated and slots locked.`,
+      );
       data.load();
       onCreated();
     } catch (x) {
@@ -695,7 +1071,15 @@ function Appointments({
         </label>
         <label>
           Practitioner
-          <select name="practitionerId" required>
+          <select
+            name="practitionerId"
+            required
+            value={practitionerId}
+            onChange={(e) => {
+              setPractitionerId(e.target.value);
+              setServiceId("");
+            }}
+          >
             <option value="">Select practitioner</option>
             {practitioners.rows.map((x) => (
               <option value={x.id}>{x.full_name}</option>
@@ -704,16 +1088,51 @@ function Appointments({
         </label>
         <label>
           Service
-          <select name="serviceId" required>
+          <select
+            name="serviceId"
+            required
+            value={serviceId}
+            onChange={(e) => setServiceId(e.target.value)}
+            disabled={!practitionerId}
+          >
             <option value="">Select service</option>
-            {services.rows.map((x) => (
+            {serviceOptions.map((x) => (
               <option value={x.id}>{x.name}</option>
             ))}
           </select>
         </label>
         <label>
-          Date and time
-          <input name="startsAt" type="datetime-local" required />
+          Appointment date
+          <input
+            name="bookingDate"
+            type="date"
+            required
+            value={bookingDate}
+            onChange={(e) => setBookingDate(e.target.value)}
+          />
+        </label>
+        <label>
+          Available slot
+          <select name="startsAt" required disabled={!slots.length}>
+            <option value="">Select available slot</option>
+            {slots.map((x) => (
+              <option value={x.startsAt} disabled={!x.available}>
+                {x.label}
+                {x.available ? "" : " — unavailable"}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Weekly sessions
+          <input
+            name="repeatWeeks"
+            type="number"
+            min="1"
+            max="12"
+            defaultValue="1"
+          />
+          <small>Use 4 for the same slot weekly for a month.</small>
         </label>
       </CreateForm>
       <Notice error={error || data.error} ok={ok} />
@@ -736,12 +1155,41 @@ function Appointments({
                 {r.service} · {r.practitioner} · {r.room}
               </small>
             </div>
-            <em>
-              {new Date(r.starts_at).toLocaleTimeString("en-IN", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </em>
+            <div className="appointmentActions">
+              <em>
+                {new Date(r.starts_at).toLocaleTimeString("en-IN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </em>
+              {r.status === "BOOKED" && (
+                <button
+                  className="linkDanger"
+                  onClick={async () => {
+                    const reason = window.prompt("Cancellation reason") || "";
+                    if (!reason) return;
+                    try {
+                      await api(
+                        `/appointments/${r.id}/cancel`,
+                        {
+                          method: "POST",
+                          body: JSON.stringify({
+                            reason,
+                            cancelledBy: "CUSTOMER",
+                          }),
+                        },
+                        token,
+                      );
+                      data.load();
+                    } catch (x) {
+                      setError((x as Error).message);
+                    }
+                  }}
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
           </>
         )}
       />
@@ -754,6 +1202,17 @@ function Payments({ token }: { token: string }) {
     data = useRows("/payments", token),
     [error, setError] = useState(""),
     [ok, setOk] = useState("");
+  const [customerId, setCustomerId] = useState(""),
+    [due, setDue] = useState<Row | null>(null);
+  useEffect(() => {
+    if (!customerId) {
+      setDue(null);
+      return;
+    }
+    api<Row>(`/payments/due/${customerId}`, {}, token)
+      .then(setDue)
+      .catch((e) => setError(e.message));
+  }, [customerId, token]);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget,
@@ -766,6 +1225,8 @@ function Payments({ token }: { token: string }) {
           body: JSON.stringify({
             customerId: field(f, "customerId"),
             amount: Number(field(f, "amount")),
+            adjustment: Number(field(f, "adjustment") || 0),
+            notes: field(f, "notes") || null,
             method: field(f, "method"),
             otp: field(f, "otp"),
           }),
@@ -774,6 +1235,7 @@ function Payments({ token }: { token: string }) {
       );
       form.reset();
       setOk(`Payment recorded. Receipt ${r.receiptNumber}`);
+      setDue(null);
       data.load();
     } catch (x) {
       setError((x as Error).message);
@@ -788,16 +1250,46 @@ function Payments({ token }: { token: string }) {
       <CreateForm title="Record payment" onSubmit={submit}>
         <label>
           Customer
-          <select name="customerId" required>
+          <select
+            name="customerId"
+            required
+            value={customerId}
+            onChange={(e) => setCustomerId(e.target.value)}
+          >
             <option value="">Select customer</option>
             {customers.rows.map((x) => (
               <option value={x.id}>{x.full_name}</option>
             ))}
           </select>
         </label>
+        {due && (
+          <div className="dueSummary">
+            <small>
+              Sessions {money(due.sessionCharges)} · cancellations{" "}
+              {money(due.cancellationCharges)} · paid {money(due.paid)}
+            </small>
+            <b>Amount due {money(due.due)}</b>
+          </div>
+        )}
         <label>
           Amount
-          <input name="amount" type="number" min="0.01" step="0.01" required />
+          <input
+            name="amount"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required
+            defaultValue={due?.due || ""}
+            key={String(due?.due)}
+          />
+        </label>
+        <label>
+          Adjustment (+/-)
+          <input name="adjustment" type="number" step="0.01" defaultValue="0" />
+        </label>
+        <label>
+          Adjustment note
+          <input name="notes" placeholder="Reason for adjustment" />
         </label>
         <label>
           Method
@@ -822,7 +1314,12 @@ function Payments({ token }: { token: string }) {
             <div>
               <b>{r.customer}</b>
               <small>
-                {r.method} · {r.receipt_number}
+                {r.method} · {r.receipt_number}{" "}
+                {r.receipt_url && (
+                  <a href={r.receipt_url} target="_blank">
+                    View receipt
+                  </a>
+                )}
               </small>
             </div>
             <em>{money(r.amount)}</em>
@@ -839,9 +1336,11 @@ function Attendance({ token }: { token: string }) {
     [error, setError] = useState("");
   async function mark(id: string, status: string) {
     try {
+      const comment =
+        window.prompt("Short attendance comment (optional)") || "";
       await api(
         `/appointments/${id}/attendance`,
-        { method: "PUT", body: JSON.stringify({ status, comment: "" }) },
+        { method: "PUT", body: JSON.stringify({ status, comment }) },
         token,
       );
       data.load();

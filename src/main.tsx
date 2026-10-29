@@ -279,19 +279,21 @@ function ClinicPortal({
           </button>
         </div>
         <nav>
-          {nav.map(([n, I]) => (
-            <button
-              className={n === active ? "active" : ""}
-              onClick={() => {
-                setActive(n);
-                setDrawer(false);
-              }}
-              key={n}
-            >
-              <I size={19} />
-              <span>{n}</span>
-            </button>
-          ))}
+          {nav
+            .filter(([n]) => user.role === "OWNER" || n !== "Partners")
+            .map(([n, I]) => (
+              <button
+                className={n === active ? "active" : ""}
+                onClick={() => {
+                  setActive(n);
+                  setDrawer(false);
+                }}
+                key={n}
+              >
+                <I size={19} />
+                <span>{n}</span>
+              </button>
+            ))}
         </nav>
         <div className="profile">
           <div className="avatar">{initials(user.name)}</div>
@@ -719,18 +721,49 @@ function ClinicSearch({ token }: { token: string }) {
   const [error, setError] = useState("");
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      api<Record<string, any>[]>(`/admin/clinics?q=${encodeURIComponent(q)}`, {}, token)
+      api<Record<string, any>[]>(
+        `/admin/clinics?q=${encodeURIComponent(q)}`,
+        {},
+        token,
+      )
         .then(setRows)
         .catch((e) => setError(e.message));
     }, 250);
     return () => window.clearTimeout(timer);
   }, [q, token]);
-  return <section className="clinicSearch panel">
-    <div className="adminIntro"><span className="eyebrow">Clinic directory</span><h1>Find a clinic</h1><p>Search by clinic name, slug or email.</p></div>
-    <label className="pageSearch"><Search/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search all clinics"/></label>
-    {error&&<div className="formError">{error}</div>}
-    <div className="recordList">{rows.map(r=><article className="record" key={r.id}><div><b>{r.name}</b><small>{r.slug} · {r.email||'No email'}</small></div><em>{r.branches} branch · {r.users} users</em></article>)}</div>
-  </section>;
+  return (
+    <section className="clinicSearch panel">
+      <div className="adminIntro">
+        <span className="eyebrow">Clinic directory</span>
+        <h1>Find a clinic</h1>
+        <p>Search by clinic name, slug or email.</p>
+      </div>
+      <label className="pageSearch">
+        <Search />
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search all clinics"
+        />
+      </label>
+      {error && <div className="formError">{error}</div>}
+      <div className="recordList">
+        {rows.map((r) => (
+          <article className="record" key={r.id}>
+            <div>
+              <b>{r.name}</b>
+              <small>
+                {r.slug} · {r.email || "No email"}
+              </small>
+            </div>
+            <em>
+              {r.branches} branch · {r.users} users
+            </em>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function Stat({
