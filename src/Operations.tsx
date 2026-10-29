@@ -1002,6 +1002,7 @@ function Appointments({
     [bookingDate, setBookingDate] = useState(date),
     [bookingMonth, setBookingMonth] = useState(date.slice(0, 7)),
     [bookingMode, setBookingMode] = useState<"SINGLE" | "MONTH">("SINGLE"),
+    [monthTime, setMonthTime] = useState(""),
     [serviceOptions, setServiceOptions] = useState<Row[]>([]),
     [slots, setSlots] = useState<Row[]>([]),
     [selectedSlots, setSelectedSlots] = useState<string[]>([]);
@@ -1201,6 +1202,41 @@ function Appointments({
             <b>Available slots</b>
             <small>{selectedSlots.length} selected</small>
           </div>
+          {bookingMode === "MONTH" && slots.length > 0 && (
+            <div className="applyMonthSlot">
+              <label>
+                Use the same time across this month
+                <select
+                  value={monthTime}
+                  onChange={(e) => setMonthTime(e.target.value)}
+                >
+                  <option value="">Select a time</option>
+                  {Array.from(new Set(slots.map((x) => String(x.label))))
+                    .sort()
+                    .map((time) => (
+                      <option value={time}>{time}</option>
+                    ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                disabled={!monthTime}
+                onClick={() =>
+                  setSelectedSlots(
+                    slots
+                      .filter((x) => String(x.label) === monthTime)
+                      .map((x) => String(x.startsAt)),
+                  )
+                }
+              >
+                Apply to all available dates
+              </button>
+              <small>
+                Only dates where both the practitioner and a matching room are
+                free will be selected.
+              </small>
+            </div>
+          )}
           {!practitionerId || !serviceId ? (
             <p>Select a practitioner and service first.</p>
           ) : !slots.length ? (
