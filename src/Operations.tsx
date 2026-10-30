@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useState } from "react";
+import React, { FormEvent, useEffect, useRef, useState } from "react";
 import {
   CalendarDays,
   ClipboardCheck,
@@ -47,6 +47,49 @@ function Notice({ error, ok }: { error: string; ok: string }) {
       {error && <div className="formError">{error}</div>}
       {ok && <div className="formSuccess">{ok}</div>}
     </>
+  );
+}
+function EditorDetails({
+  summary,
+  className,
+  children,
+}: {
+  summary: string;
+  className: string;
+  children: React.ReactNode;
+}) {
+  const details = useRef<HTMLDetailsElement>(null);
+  const close = () => {
+    if (details.current) details.current.open = false;
+  };
+  useEffect(() => {
+    const outside = (event: PointerEvent) => {
+      if (
+        details.current?.open &&
+        !details.current.contains(event.target as Node)
+      )
+        close();
+    };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, []);
+  return (
+    <details
+      ref={details}
+      className={className}
+      onSubmitCapture={() => window.setTimeout(close)}
+    >
+      <summary>{summary}</summary>
+      <button
+        className="editorClose"
+        type="button"
+        aria-label="Close editor"
+        onClick={close}
+      >
+        ×
+      </button>
+      {children}
+    </details>
   );
 }
 function Page({
@@ -440,8 +483,7 @@ function Rooms({ token, owner }: { token: string; owner: boolean }) {
             </div>
             <em className="statusPill">{r.active ? "Active" : "Inactive"}</em>
             {owner && (
-              <details className="inlineEditor">
-                <summary>Edit</summary>
+              <EditorDetails className="inlineEditor" summary="Edit">
                 <form onSubmit={(e) => update(r.id, e)}>
                   <label>
                     Name
@@ -466,7 +508,7 @@ function Rooms({ token, owner }: { token: string; owner: boolean }) {
                   </label>
                   <button>Save changes</button>
                 </form>
-              </details>
+              </EditorDetails>
             )}
           </>
         )}
@@ -504,8 +546,10 @@ function Customers({ token }: { token: string }) {
         token,
       );
       form.reset();
+      setError("");
       setOk("Customer added.");
-      data.load();
+      if (q) setQ("");
+      else data.load();
     } catch (x) {
       setError((x as Error).message);
     }
@@ -532,6 +576,7 @@ function Customers({ token }: { token: string }) {
         },
         token,
       );
+      setError("");
       setOk("Customer updated.");
       data.load();
     } catch (x) {
@@ -609,8 +654,7 @@ function Customers({ token }: { token: string }) {
               </small>
             </div>
             <em>{r.joined_on}</em>
-            <details className="inlineEditor">
-              <summary>Edit</summary>
+            <EditorDetails className="inlineEditor" summary="Edit">
               <form onSubmit={(e) => update(r.id, e)}>
                 <label>
                   Name
@@ -672,7 +716,7 @@ function Customers({ token }: { token: string }) {
                 </label>
                 <button>Save changes</button>
               </form>
-            </details>
+            </EditorDetails>
           </>
         )}
       />
@@ -967,8 +1011,7 @@ function Partners({ token, owner }: { token: string; owner: boolean }) {
             </div>
             <em>{r.years_experience} years</em>
             {owner && (
-              <details className="inlineEditor">
-                <summary>Edit profile</summary>
+              <EditorDetails className="inlineEditor" summary="Edit profile">
                 <form onSubmit={(e) => update(r.id, e)}>
                   <label>
                     Name
@@ -1100,7 +1143,7 @@ function Partners({ token, owner }: { token: string; owner: boolean }) {
                   </label>
                   <button>Save changes</button>
                 </form>
-              </details>
+              </EditorDetails>
             )}
           </>
         )}
@@ -1313,8 +1356,7 @@ function Services({ token, owner }: { token: string; owner: boolean }) {
             </div>
             <em>{money(r.price)}</em>
             {owner && (
-              <details className="inlineEditor">
-                <summary>Edit</summary>
+              <EditorDetails className="inlineEditor" summary="Edit">
                 <form onSubmit={(e) => updateService(r.id, e)}>
                   <label>
                     Name
@@ -1371,7 +1413,7 @@ function Services({ token, owner }: { token: string; owner: boolean }) {
                   </label>
                   <button>Save changes</button>
                 </form>
-              </details>
+              </EditorDetails>
             )}
           </>
         )}
@@ -1444,7 +1486,7 @@ function RescheduleEditor({
     if (!serviceId || !date) return;
     setSlot("");
     api<Row[]>(
-      `/slots?practitionerId=${appointment.practitioner_id}&serviceId=${serviceId}&date=${date}&excludeAppointmentId=${appointment.id}`,
+      `/slots?practitionerId=${appointment.practitioner_id}&serviceId=${serviceId}&date=${date}&customerId=${appointment.customer_id}&excludeAppointmentId=${appointment.id}`,
       {},
       token,
     )
@@ -1518,7 +1560,8 @@ function Appointments({
   );
   const [error, setError] = useState(""),
     [ok, setOk] = useState("");
-  const [practitionerId, setPractitionerId] = useState(""),
+  const [customerId, setCustomerId] = useState(""),
+    [practitionerId, setPractitionerId] = useState(""),
     [serviceId, setServiceId] = useState(""),
     [bookingDate, setBookingDate] = useState(date),
     [bookingMonth, setBookingMonth] = useState(date.slice(0, 7)),
@@ -1539,12 +1582,12 @@ function Appointments({
   useEffect(() => {
     const month =
       bookingMode === "SINGLE" ? bookingDate.slice(0, 7) : bookingMonth;
-    if (!practitionerId || !serviceId || !month) {
+    if (!customerId || !practitionerId || !serviceId || !month) {
       setSlots([]);
       return;
     }
     api<Row[]>(
-      `/availability/month?practitionerId=${practitionerId}&serviceId=${serviceId}&month=${month}`,
+      `/availability/month?practitionerId=${practitionerId}&serviceId=${serviceId}&month=${month}&customerId=${customerId}`,
       {},
       token,
     )
@@ -1558,6 +1601,7 @@ function Appointments({
       })
       .catch((e) => setError(e.message));
   }, [
+    customerId,
     practitionerId,
     serviceId,
     bookingDate,
@@ -1577,7 +1621,7 @@ function Appointments({
         {
           method: "POST",
           body: JSON.stringify({
-            customerId: field(f, "customerId"),
+            customerId,
             practitionerId,
             serviceId,
             startsAt: selectedSlots,
@@ -1602,6 +1646,8 @@ function Appointments({
       return value ? [...withoutDate, value] : withoutDate;
     });
   }
+  const freeSlots = slots.filter((slot) => slot.available === true);
+  const monthGroups = groupByDate(slots);
   return (
     <Page
       title="Appointments"
@@ -1632,7 +1678,12 @@ function Appointments({
         </fieldset>
         <label>
           Customer
-          <select name="customerId" required>
+          <select
+            name="customerId"
+            required
+            value={customerId}
+            onChange={(e) => setCustomerId(e.target.value)}
+          >
             <option value="">Select customer</option>
             {customers.rows.map((x) => (
               <option value={x.id}>{x.full_name}</option>
@@ -1721,7 +1772,7 @@ function Appointments({
                 disabled={!monthTime}
                 onClick={() =>
                   setSelectedSlots(
-                    slots
+                    freeSlots
                       .filter((x) => String(x.label) === monthTime)
                       .map((x) => String(x.startsAt)),
                   )
@@ -1730,13 +1781,13 @@ function Appointments({
                 Apply to all available dates
               </button>
               <small>
-                Only dates where both the practitioner and a matching room are
-                free will be selected.
+                Available dates are selected automatically. Conflicting dates
+                are highlighted below so you can choose another free time.
               </small>
             </div>
           )}
-          {!practitionerId || !serviceId ? (
-            <p>Select a practitioner and service first.</p>
+          {!customerId || !practitionerId || !serviceId ? (
+            <p>Select a customer, practitioner and service first.</p>
           ) : !slots.length ? (
             <p>
               No available slots for this{" "}
@@ -1752,15 +1803,37 @@ function Appointments({
                 }
               >
                 <option value="">Select an available slot</option>
-                {slots.map((x) => (
+                {freeSlots.map((x) => (
                   <option value={x.startsAt}>{x.label}</option>
                 ))}
               </select>
-              <small>Only free practitioner and room slots are shown.</small>
+              {!freeSlots.length ? (
+                <small className="slotConflict">
+                  {Array.from(new Set(slots.map((x) => x.reason))).join(" · ")}
+                </small>
+              ) : (
+                <small>
+                  Only times free for the customer, practitioner and room are
+                  shown.
+                </small>
+              )}
             </label>
           ) : (
-            Object.entries(groupByDate(slots)).map(([slotDate, daySlots]) => (
-              <section className="slotDay" key={slotDate}>
+            Object.entries(monthGroups).map(([slotDate, daySlots]) => {
+              const availableForDay = daySlots.filter(
+                (slot) => slot.available === true,
+              );
+              const requested = monthTime
+                ? daySlots.find((slot) => String(slot.label) === monthTime)
+                : null;
+              const conflict = Boolean(
+                monthTime && (!requested || !requested.available),
+              );
+              return (
+              <section
+                className={`slotDay ${conflict ? "hasConflict" : ""}`}
+                key={slotDate}
+              >
                 <h4>
                   {new Intl.DateTimeFormat("en-IN", {
                     weekday: "short",
@@ -1776,12 +1849,18 @@ function Appointments({
                   onChange={(e) => chooseMonthlySlot(slotDate, e.target.value)}
                 >
                   <option value="">No session this date</option>
-                  {daySlots.map((x) => (
+                  {availableForDay.map((x) => (
                     <option value={x.startsAt}>{x.label}</option>
                   ))}
                 </select>
+                {conflict && (
+                  <small className="slotConflict">
+                    {monthTime} cannot be booked: {requested?.reason || "outside practitioner availability"}. Choose another available time.
+                  </small>
+                )}
               </section>
-            ))
+              );
+            })
           )}
         </div>
       </CreateForm>
@@ -1850,8 +1929,7 @@ function Appointments({
               </em>
               {r.status === "BOOKED" && (
                 <>
-                  <details className="modifyBooking">
-                    <summary>Modify</summary>
+                  <EditorDetails className="modifyBooking" summary="Modify">
                     <RescheduleEditor
                       appointment={r}
                       token={token}
@@ -1863,7 +1941,7 @@ function Appointments({
                         data.load();
                       }}
                     />
-                  </details>
+                  </EditorDetails>
                   <button
                     className="linkDanger"
                     type="button"
@@ -2051,8 +2129,7 @@ function Payments({ token, owner }: { token: string; owner: boolean }) {
             </div>
             <em>{money(r.amount)}</em>
             {owner && (
-              <details className="inlineEditor">
-                <summary>Correct details</summary>
+              <EditorDetails className="inlineEditor" summary="Correct details">
                 <form onSubmit={(e) => update(r.id, e)}>
                   <label>
                     Amount
@@ -2091,7 +2168,7 @@ function Payments({ token, owner }: { token: string; owner: boolean }) {
                   </label>
                   <button>Save audited correction</button>
                 </form>
-              </details>
+              </EditorDetails>
             )}
           </>
         )}
@@ -2219,8 +2296,7 @@ function MediaLibrary({ token, owner }: { token: string; owner: boolean }) {
               {r.featured && <b>Featured</b>}
             </div>
             {owner && (
-              <details className="inlineEditor">
-                <summary>Edit</summary>
+              <EditorDetails className="inlineEditor" summary="Edit">
                 <form onSubmit={(e) => update(r.id, e)}>
                   <label>
                     Type
@@ -2257,7 +2333,7 @@ function MediaLibrary({ token, owner }: { token: string; owner: boolean }) {
                   </label>
                   <button>Save changes</button>
                 </form>
-              </details>
+              </EditorDetails>
             )}
           </article>
         ))}
